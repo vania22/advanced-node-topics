@@ -5,10 +5,11 @@ const redis = require('redis');
 // Setting up Redis client
 const REDIS_URL = 'redis://127.0.0.1:6379';
 const client = redis.createClient({ url: REDIS_URL });
-client.get = promisify(client.get).bind(client);
+client.hget = promisify(client.hget).bind(client);
 
-mongoose.Query.prototype.cache = function () {
+mongoose.Query.prototype.cache = function (options = {}) {
     this.useCache = true;
+    this.hashKey = JSON.stringify(options.key || '');
 
     return this;
 };
@@ -23,7 +24,7 @@ mongoose.Query.prototype.exec = async function () {
     // Creating a key to store in a cache and stringifying it
     const key = JSON.stringify({ ...this.getFilter(), collection: this.mongooseCollection.name });
 
-    const cachedValue = await client.get(key);
+    const cachedValue = await client.hget(this.hashKey, key);
 
     if (cachedValue) {
         const doc = JSON.parse(cachedValue);
@@ -34,9 +35,15 @@ mongoose.Query.prototype.exec = async function () {
     }
 
     const dbValue = await exec.apply(this, arguments);
-    client.set(key, JSON.stringify(dbValue));
+    client.hset(this.hashKey, key, JSON.stringify(dbValue), 'EX', 10);
 
     console.log('from db but caching');
 
     return dbValue;
+};
+
+module.exports = {
+    clearCache(key) {
+        client.del(JSON.stringify(key) || '');
+    },
 };
