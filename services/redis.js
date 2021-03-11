@@ -1,7 +1,28 @@
 const { promisify } = require('util');
+const mongoose = require('mongoose');
 const redis = require('redis');
 
-const client = redis.createClient();
+// Setting up Redis client
+const REDIS_URL = 'redis://127.0.0.1:6379';
+const client = redis.createClient({ url: REDIS_URL });
 client.get = promisify(client.get).bind(client);
 
-module.exports = client;
+// Rewriting mongoose's exec function to cache queries
+const exec = mongoose.Query.prototype.exec;
+
+mongoose.Query.prototype.exec = async function () {
+    // Creating a key to store in a cache and stringifying it
+    const key = JSON.stringify({ ...this.getFilter(), collection: this.mongooseCollection.name });
+
+    const cachedValue = await client.get(key);
+
+    if (cachedValue) {
+        console.log(cachedValue);
+        return JSON.parse(cachedValue);
+    }
+
+    const dbValue = await exec.apply(this, arguments);
+    client.set(key, JSON.stringify(dbValue));
+
+    return dbValue;
+};
