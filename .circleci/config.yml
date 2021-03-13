@@ -1,0 +1,15 @@
+version: 2.1
+orbs:
+  node: circleci/node@3.0.0
+jobs:
+  build: 
+    docker:       
+      - image: buildpack-deps:trust
+      - image: circleci/mongo:latest
+      - image: circleci/redis:latest  
+    steps:       
+      - run: echo "hello world"          
+workflows:
+  node-tests:
+    jobs:
+      - node/test
